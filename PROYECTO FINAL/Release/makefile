@@ -30,56 +30,56 @@ endif
 
 # Add inputs and outputs from these tool invocations to the build variables 
 LSS += \
-final.lss \
+finalIII.lss \
 
 FLASH_IMAGE += \
-final.hex \
+finalIII.hex \
 
 EEPROM_IMAGE += \
-final.eep \
+finalIII.eep \
 
 SIZEDUMMY += \
 sizedummy \
 
 
 # All Target
-all: final.elf secondary-outputs
+all: finalIII.elf secondary-outputs
 
 # Tool invocations
-final.elf: $(OBJS) $(USER_OBJS)
+finalIII.elf: $(OBJS) $(USER_OBJS)
 	@echo 'Building target: $@'
 	@echo 'Invoking: AVR C Linker'
-	avr-gcc -Wl,-Map,final.map -mmcu=atmega128 -o "final.elf" $(OBJS) $(USER_OBJS) $(LIBS)
+	avr-gcc -Wl,-Map,finalIII.map -mmcu=atmega128 -o "finalIII.elf" $(OBJS) $(USER_OBJS) $(LIBS)
 	@echo 'Finished building target: $@'
 	@echo ' '
 
-final.lss: final.elf
+finalIII.lss: finalIII.elf
 	@echo 'Invoking: AVR Create Extended Listing'
-	-avr-objdump -h -S final.elf  >"final.lss"
+	-avr-objdump -h -S finalIII.elf  >"finalIII.lss"
 	@echo 'Finished building: $@'
 	@echo ' '
 
-final.hex: final.elf
+finalIII.hex: finalIII.elf
 	@echo 'Create Flash image (ihex format)'
-	-avr-objcopy -R .eeprom -R .fuse -R .lock -R .signature -O ihex final.elf  "final.hex"
+	-avr-objcopy -R .eeprom -R .fuse -R .lock -R .signature -O ihex finalIII.elf  "finalIII.hex"
 	@echo 'Finished building: $@'
 	@echo ' '
 
-final.eep: final.elf
+finalIII.eep: finalIII.elf
 	@echo 'Create eeprom image (ihex format)'
-	-avr-objcopy -j .eeprom --no-change-warnings --change-section-lma .eeprom=0 -O ihex final.elf  "final.eep"
+	-avr-objcopy -j .eeprom --no-change-warnings --change-section-lma .eeprom=0 -O ihex finalIII.elf  "finalIII.eep"
 	@echo 'Finished building: $@'
 	@echo ' '
 
-sizedummy: final.elf
+sizedummy: finalIII.elf
 	@echo 'Invoking: Print Size'
-	-avr-size --format=avr --mcu=atmega128 final.elf
+	-avr-size --format=avr --mcu=atmega128 finalIII.elf
 	@echo 'Finished building: $@'
 	@echo ' '
 
 # Other Targets
 clean:
-	-$(RM) $(FLASH_IMAGE)$(ELFS)$(OBJS)$(ASM_DEPS)$(EEPROM_IMAGE)$(S_DEPS)$(SIZEDUMMY)$(S_UPPER_DEPS)$(LSS)$(C_DEPS) final.elf
+	-$(RM) $(FLASH_IMAGE)$(ELFS)$(OBJS)$(ASM_DEPS)$(EEPROM_IMAGE)$(S_DEPS)$(SIZEDUMMY)$(S_UPPER_DEPS)$(LSS)$(C_DEPS) finalIII.elf
 	-@echo ' '
 
 secondary-outputs: $(LSS) $(FLASH_IMAGE) $(EEPROM_IMAGE) $(SIZEDUMMY)

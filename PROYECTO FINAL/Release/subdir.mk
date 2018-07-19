@@ -6,17 +6,17 @@
 C_SRCS += \
 ../TWI_master.c \
 ../lcd_alfa.c \
-../proyecto.c 
+../proyectito.c 
 
 OBJS += \
 ./TWI_master.o \
 ./lcd_alfa.o \
-./proyecto.o 
+./proyectito.o 
 
 C_DEPS += \
 ./TWI_master.d \
 ./lcd_alfa.d \
-./proyecto.d 
+./proyectito.d 
 
 
 # Each subdirectory must supply rules for building sources it contributes

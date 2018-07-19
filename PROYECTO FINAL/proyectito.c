@@ -1,5 +1,5 @@
 /*
- * main.c
+ * main
  *
  *  Created on: 19 jun. 2018
  *      Author: Administrador
@@ -10,12 +10,12 @@
 #include <avr/interrupt.h>
 #include <util/delay.h>
 
+#include "BH1750.h"
+#include "HDK128.h"
+#include "lcd_alfa.h"
 #include "mydef.h"
 #include "timer.h"
-#include "lcd_alfa.h"
-#include "HDK128.h"
 #include "TWI_master.h"
-#include "BH1750.h"
 
 #define FOSC 8000000 				// Clock Speed
 #define BAUD 9600 					// Baud Rate
@@ -28,20 +28,23 @@ unsigned int read_bh();					//funcion de lectura de sensor
 void init_read();						//funcion de inicializacion de lectura
 void config_set(void);					//configuracion del código
 void UART_Init( unsigned int ubrr ); 	//configuracion de UART1
-void brillo(unsigned char);				//funcion de actualizacion del brillo
-void lcd_mostrar(void);  //funcion de actualizacion del modo, estado, brillo y cantidad de luz
+void brillo(unsigned int);				//funcion de actualizacion del brillo
+void lcd_mostrar(void);  				//funcion de actualizacion del modo, estado, brillo y cantidad de luz
 void respuesta(void);					//me fijo si hay que responder algo
 unsigned int lux(unsigned int);			//convierto a lux el dato del sensor
 void manual(void);						//rutina en modo manual
 void automatico(void);					//rutina en modo automatico
 
-volatile int cont=0;			//variable de conteo timer
-volatile char bxxx[3]="010";	//valor de brillo inicial en 10
-volatile char mode= AC;			//mode en AC indica el modo automatico, en MC el modo manual
-volatile char blue_dat ='H';    //le coloco un valor inicial que no moleste
-volatile unsigned int data=0;	//aca guardo las lecturas de sensor de luz
-volatile unsigned int conver=0;	//variable auxiliar para trabajar sobre el valor de bxxx
-volatile bit_t flag;			//creamos los flags
+volatile int i=0;
+volatile int cont=0;					//variable de conteo timer
+volatile int refresh=0;					//variable de control tiempo de refresco de pantalla
+volatile unsigned char bxxx[]="010";	//valor de brillo inicial en 10
+volatile unsigned char luxom[]="00001";  //variable para imprimir el valor del luxometro
+volatile unsigned char view[]="000";
+volatile char mode= AC;					//mode en AC indica el modo automatico, en MC el modo manual
+volatile char blue_dat ='H';    		//le coloco un valor inicial que no moleste
+volatile unsigned int data=0;			//aca guardo las lecturas de sensor de luz
+volatile bit_t flag;					//creamos los flags
 
 
 int main(void)
@@ -54,19 +57,37 @@ int main(void)
 	lcd_init(LCD_DISP_ON);		//inicializo el display
 	lcd_clrscr();				//limpiamos pantalla
 
+	UART1_TX_OFF;				//apagamos la interrupcion por transmision completa, solo dejamos la de recepcion
 
 
 	while(1)					//comienzo de bucle de programa
     {
-		respuesta();						//me fijo si hay que responder algo O flags en alto
-		if(mode==MC) automatico();			//voy a rutina en modo automatico
-		else manual();						//voy a rutina en modo manual
-		set_bit(PORTB,4);
+		respuesta();			//me fijo si hay que responder algo O flags en alto
+
+		if(mode==AC)
+		{
+			disable_interrupt_INT5;	//desactivo interrupcion de boton 5
+			disable_interrupt_INT6;	//desactivo interrupcion de boton 6
+			automatico();			//voy a rutina en modo automatico
+
+		}
+		else
+		{
+			enable_interrupt_INT5;	//activo interrupcion de boton 5
+			enable_interrupt_INT6;	//activo interrupcion de boton 6
+
+			while((atoi(bxxx)%10)!=0)	//regulo el valor del brillo a un valor multiplo de 10 para simplificar
+			{
+				itoa(atoi(bxxx)-1,bxxx,10);
+			}
+
+			timer0_compare_value=(int)((225/90)*(atoi(bxxx)-10)+25); //ajusto el ancho de pulso de acuerdo al brillo (interpolacion)
+
+			manual();				//voy a rutina en modo manual
+		}
     }
 	return 0;
 }
-
-
 
 void UART_Init( unsigned int ubrr )
 {
@@ -89,8 +110,6 @@ UCSR1C = (1<<USBS)|(3<<UCSZ0);
 void config_set()
 {
 	set_output(DDRB,4);	//establezco como salida el pin B4 que maneja la salida del PWM
-	led4_out;			//habilito el uso del led del pin D4
-	led4_off;			//lo apago por seguridad
 	set_sw5;			//se habilita el pulsador del pin E5
 	set_sw6;			//se habilita el pulsador del pin E6
 
@@ -99,34 +118,35 @@ void config_set()
 	INT5_falling_edge;			//establezco que la INT5 se habilite por flanco descendente
 	INT6_falling_edge;			//establezco que la INT6 se habilite por flanco descendente
 
-	timer0_prescaler_8;			//establezco el prescaler en 8, dando un tiempo por cuenta de ciclo de 1 useg.
+	clr_reg(PORTA);				//limpio puerto	A
+	clr_reg(PORTC);				//limpio puerto	C
+	clr_reg(PORTD);				//limpio puerto	D
+	clr_reg(PORTE);				//limpio puerto	E
+
+
 	timer0_mode_fastPWM;		//configuro al timer en modo fast PWM
-	timer0_compare_value = 25; //defino el OCR de comparacion para el PWM inicial al 10%
+	timer0_prescaler_8;			//establezco el prescaler en 8, dando un tiempo por cuenta de ciclo de 1 useg.
+	timer0_compare_value =25; 	//defino el OCR de comparacion para el PWM inicial al 10%
 
 	timer2_mode_normal;		  	//timer 2 en modo normal
 	timer2_prescaler_8;			//establezco el prescaler en 8, dando un tiempo por cuenta de ciclo de 1 useg.
 	timer2_timer_value = 155; 	// Desborda en 100useg
 	timer2_int_overflow;		//habilitamos interrupcion por desborde de timer
 
-	clr_reg(PORTA);				//limpio puerto	A
-	clr_reg(PORTC);				//limpio puerto	C
-	clr_reg(PORTD);				//limpio puerto	D
-	clr_reg(PORTE);				//limpio puerto	E
-
-	flag.B0=0;
-	flag.B1=0;
-	flag.B2=0;
-	flag.B3=0;
-	flag.B4=0;
-	flag.B5=0;
-	flag.B6=0;
-	flag.B7=0;
+	flag.B0=0;					//pongo en 0 flag de recepcion de B
+	flag.B1=0;					//pongo en 0 flag de refresco de pantalla (cont 1000)
+	flag.B2=0;					//pongo en 0 flag de refresco de lectura de sensor(cont 3000)
+	flag.B3=0;					//pongo en 0 flag de respuesta (..hay algo para responder..)
+	flag.B4=0;					//pongo en 0 flag de respuesta para A
+	flag.B5=0;					//pongo en 0 flag de respuesta para L
+	flag.B6=0;					//pongo en 0 flag de respuesta para S
+	flag.B7=0;					//pongo en 0 flag de flag de stop de timer
 
 }
 
 unsigned int read_bh()
 {
-	int datin=0;
+	unsigned int datin=0;
 
 					twi_start_cond();					//mandamos condicion de START
 					i2c_write_byte(ADDRL_R); 			//mandamos address + modo escritura
@@ -170,36 +190,45 @@ void lcd_mostrar()
 
 	lcd_gotoxy(8,1);
 	lcd_puts("LX:");
-	itoa(lux(data),msj,10);
-	lcd_puts(msj);
+	sprintf(luxom,"%i",lux(data));				//guardamos en luxom el dato del sensor
+	lcd_puts(luxom);
 
 }
 
 
 void manual(void)
 {
+  if(flag.B1)
+  {
+	  lcd_mostrar();
+	  flag.B1=0;
+  }
 
-	lcd_mostrar();
 }
 
 void automatico(void)
 {
+	unsigned int conver=0;
+
 	conver=atoi(bxxx);
-	timer0_compare_value=(int)((225/90)*(conver-10)+2); //ajusto el ancho de pulso de acuerdo al brillo  (interpolacion)
+	timer0_compare_value=(int)((225/90)*(conver-10)+25); //ajusto el ancho de pulso de acuerdo al brillo  (interpolacion)
 
 }
 
 
-void brillo(unsigned char din)
+void brillo(unsigned int din)
 {
-	conver=(int)((-90/65534)*((int)((float)din/1.2)-1)+100);			//interpolacion de valores para el brillo--MAX para 65534 lx MIN  para 1 lx.
-	itoa(conver,bxxx,10);												//guardo resultado en bxxx
+	unsigned int conver=0;
+
+	conver=(int)((-90/65534)*(lux(din)-1)+100);			//interpolacion de valores para el brillo--MAX para 65534 lx MIN  para 1 lx.
+	sprintf(bxxx,"%i",conver);							//guardo resultado en bxxx
 }
 
 
 void respuesta(void)
 {
-	char msj[6];
+
+	//char msj[6];
 
 	if(flag.B3)				//¿HAY ALGO PARA RESPONDER?, si el flag esta en bajo directamente este bloque de codigo no lo ve
 	{
@@ -207,45 +236,45 @@ void respuesta(void)
 		{
 			if(flag.B7)
 			{
-				sprintf(msj,"OFF");
-				while (!UDRE); 					// Esperar la TX
-				UDR1 = (int)msj; 				// Escribir en el buffer
+//				sprintf(msj,"OFF");
+//				while (!UDRE); 					// Esperar la TX
+//				UDR1 = (int)msj; 				// Escribir en el buffer
 			}
 			else
 			{
-				sprintf(msj,"ON");
-				while (!UDRE); 					// Esperar la TX
-				UDR1 = (int)msj; 				// Escribir en el buffer
+//				sprintf(msj,"ON");
+//				while (!UDRE); 					// Esperar la TX
+//				UDR1 = (int)msj; 				// Escribir en el buffer
 			}
 			flag.B4=0;					//bajamos el flag de respuesta A
 		}
 
 		if(flag.B5)			//flag de respuesta L
 		{
-			if(!flag.B7)	//si el flag b7 esta en bajo, significa que hay pwm del led
-			{
-				sprintf(msj,"ON:");
-				while (!UDRE); 					// Esperar la TX
-				UDR1 = (int)msj; 				// Escribir en el buffer
-				while (!UDRE); 					// Esperar la TX
-				UDR1 = (int)bxxx; 				// Escribir en el buffer
-			}
-			else
-			{
-				sprintf(msj,"OFF:");
-				while (!UDRE); 					// Esperar la TX
-				UDR1 = (int)msj; 				// Escribir en el buffer
-			}
-			flag.B5=0;
+//			if(!flag.B7)	//si el flag b7 esta en bajo, significa que hay pwm del led
+//			{
+//				sprintf(msj,"ON:");
+//				while (!UDRE); 					// Esperar la TX
+//				UDR1 = (int)msj; 				// Escribir en el buffer
+//				while (!UDRE); 					// Esperar la TX
+//				UDR1 = (int)bxxx; 				// Escribir en el buffer
+//			}
+//			else
+//			{
+//				sprintf(msj,"OFF:");
+//				while (!UDRE); 					// Esperar la TX
+//				UDR1 = (int)msj; 				// Escribir en el buffer
+//			}
+//			flag.B5=0;
 		}
 		if(flag.B6)			//flag de respuesta S
 		{
-			sprintf(msj,"lx:");
-			while (!UDRE); 					// Esperar la TX
-			UDR1 = (int)msj; 				// Escribir en el buffer
-			while (!UDRE); 					// Esperar la TX
-			UDR1 = lux(data); 				// Escribir en el buffer
-			flag.B6=0;						// bajamos bandera
+//			sprintf(msj,"lx:");
+//			while (!UDRE); 					// Esperar la TX
+//			UDR1 = (int)msj; 				// Escribir en el buffer
+//			while (!UDRE); 					// Esperar la TX
+//			UDR1 = lux(data); 				// Escribir en el buffer
+//			flag.B6=0;						// bajamos bandera
 		}
 
 		flag.B3=0;			//bajamos flag de respuesta
@@ -255,7 +284,12 @@ void respuesta(void)
 				lcd_mostrar();
 				flag.B1=0;
 	}
-
+	if(flag.B2)
+	{
+		data = read_bh();					//leemos el estado del sensor
+		if(mode==AC) brillo(data);			//actualizamos el brillo
+	    flag.B2=0;
+	}
 }
 
 unsigned int lux(unsigned int din)
@@ -271,17 +305,18 @@ unsigned int lux(unsigned int din)
 ISR(TIMER2_OVF_vect)					//interrupcion timer2 OVF - lectura de BH1750
 {
 	cont++;
+	refresh++;
 
-	if(cont==1000)							//si pasaron 150ms
+	if(refresh==200)							//si pasaron 20ms
 	{
 		flag.B1=1;							//habilito flag de refrescar pantalla
+		refresh=0;							//reiniciamos el refrescado de pantalla
 	}
 
 	if(cont==3000)							//si pasaron 300ms
 	{
 	   cont=0;
-	   data = read_bh();					//leemos el estado del sensor
-	   brillo(data);						//actualizamos el brillo
+	   flag.B2=1;							//activamos el flag de actualizacion de sensor
 	}
 
 	timer0_timer_value = 155;				//volvemos a cargar el valor inicial de conteo
@@ -289,7 +324,9 @@ ISR(TIMER2_OVF_vect)					//interrupcion timer2 OVF - lectura de BH1750
 
 ISR(USART1_RX_vect)							//lectura de datos bluetooth
 {
-	int i=0;
+
+	unsigned int aux=0;
+
 
 	blue_dat = UDR1;    //LEEMOS DATO BLUETOOTH
 
@@ -303,12 +340,10 @@ ISR(USART1_RX_vect)							//lectura de datos bluetooth
 				break;
 
 				case'B':
-
-						for(i=2;i>0;i--)	//espero las 3 recepciones
-						{
-							while (!RXC);  // Esperar la RX
-							bxxx[i]=UDR1;
-						}
+					if(mode==MC)
+					{
+						flag.B0=1;
+					}
 				break;
 
 				case 'L':
@@ -338,6 +373,24 @@ ISR(USART1_RX_vect)							//lectura de datos bluetooth
 				break;
 
 				default:
+					if(flag.B0)
+					{
+						if(i<2)
+						{
+						sprintf(view[i],"%c",blue_dat);
+						i++;
+						}
+						if(i==2)
+						{
+						   sprintf(view[i],"%c",blue_dat);
+
+						   if(atoi(view)>10 && atoi(view)<=100)
+						   {
+							   sprintf(bxxx,"%s",view);
+						   }
+							flag.B0=0;
+						}
+					}
 				break;
 			}
  }
@@ -345,13 +398,16 @@ ISR(USART1_RX_vect)							//lectura de datos bluetooth
 
 ISR(INT5_vect)							//inicio codigo interrupcion INT5
 {
+	unsigned int conver=0;
+
 	if(mode==MC)
 	{
 			conver=atoi(bxxx);					//pasaje caracter a int -> guardo en conver
 
 			if(conver>10)						//baja el ciclo de actividad si la variable de decenas es mayor que 1. MINIMO 10%.
 			{
-				conver= conver-10;							//decremento el valor de decenas en 1
+
+				conver= conver-10;				//decremento el valor de decenas en 1
 				timer0_compare_value -= 25;		//decremento en un 10% al ciclo de actividad
 			}
 
@@ -362,11 +418,13 @@ ISR(INT5_vect)							//inicio codigo interrupcion INT5
 
 ISR(INT6_vect)							//inicio codigo interrupcion INT6
 {
+	unsigned int conver=0;
+
 	if(mode==MC)
 	{
 	conver=atoi(bxxx);					//pasaje caracter a int -> guardo en conver
 
-	if(conver<100)						//Sube el ciclo de actividad si la variable decenas es menor a 9. MAXIMO 90%.
+	if(conver<=90)						//Sube el ciclo de actividad si la variable decenas es menor a 9. MAXIMO 90%.
 	{
 		conver=conver+10;						//aumento en 1 las decenas
 		timer0_compare_value += 25;	//aumento en un 10% el ciclo de actividad
@@ -375,4 +433,6 @@ ISR(INT6_vect)							//inicio codigo interrupcion INT6
 	itoa(conver,bxxx, 10);				//pasaje int a caracter -> guardo en Bxxx
 
 	}
-}										//fin interrupcion
+}					//fin interrupcion
+
+//

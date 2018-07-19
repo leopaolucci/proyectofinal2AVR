@@ -90,6 +90,11 @@
 #define INT6_rising_edge		EICRB|=(1<<ISC61)|(1<<ISC60)
 #define INT7_rising_edge		EICRB|=(1<<ISC71)|(1<<ISC70)
 
+#define UART1_RX_OFF	clr_bit(UCSR1B,RXEN);
+#define UART1_RX_ON		set_bit(UCSR1B,RXEN);
+
+#define UART1_TX_OFF	clr_bit(UCSR1B,TXEN);
+#define UART1_TX_ON		set_bit(UCSR1B,TXEN);
 
 #define enc 0
 #define apa 1
